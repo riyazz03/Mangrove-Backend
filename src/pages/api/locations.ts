@@ -16,14 +16,13 @@ export default async function handler(
     );
 
     res.status(200).json(response.data);
-  } catch (error: any) {
-    console.error('Error:', error.message);
-    if (error.response) {
-      console.error('Status:', error.response.status);
-      console.error('Data:', error.response.data);
-      res.status(error.response.status).json(error.response.data);
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      console.error('Axios Error fetching locations:', error.message, error.response?.data);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: 'Axios error' });
     } else {
-      res.status(500).json({ error: 'Something went wrong' });
+      console.error('Unknown error fetching locations:', error);
+      res.status(500).json({ error: 'Unknown error' });
     }
   }
 }

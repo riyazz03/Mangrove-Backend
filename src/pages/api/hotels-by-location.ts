@@ -22,12 +22,13 @@ export default async function handler(
     );
 
     res.status(200).json(response.data);
-  } catch (error: any) {
-    console.error('Error fetching hotels by location:', error.message, error.response?.data);
-    if (error.response) {
-      res.status(error.response.status).json(error.response.data);
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error)) {
+      console.error('Axios Error fetching hotels by location:', error.message, error.response?.data);
+      res.status(error.response?.status || 500).json(error.response?.data || { error: 'Axios error' });
     } else {
-      res.status(500).json({ error: 'Failed to fetch hotels by location' });
+      console.error('Unknown error fetching hotels by location:', error);
+      res.status(500).json({ error: 'Unknown error' });
     }
   }
 }
