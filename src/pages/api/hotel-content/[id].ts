@@ -28,13 +28,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     );
 
     res.status(200).json(response.data);
-  } catch (error: unknown) {
-    if (axios.isAxiosError(error)) {
-      console.error('Axios Error fetching hotel content:', error.message, error.response?.data);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: 'Axios error' });
-    } else {
-      console.error('Unknown error fetching hotel content:', error);
-      res.status(500).json({ error: 'Unknown error' });
-    }
+  } catch (error) {
+    console.error('Error fetching hotel content:', error);
+    res.status(500).json({ error: 'Failed to fetch hotel content' });
   }
 }

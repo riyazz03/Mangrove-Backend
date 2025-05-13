@@ -1,10 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -24,13 +30,8 @@ export default async function handler(
     );
 
     res.status(200).json(response.data);
-  } catch (error: unknown) {
-    if (axios.isAxiosError(error)) {
-      console.error('Axios Error creating booking:', error.message, error.response?.data);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: 'Axios error' });
-    } else {
-      console.error('Unknown error creating booking:', error);
-      res.status(500).json({ error: 'Unknown error' });
-    }
+  } catch (error) {
+    console.error('Error creating booking:', error);
+    res.status(500).json({ error: 'Failed to create booking' });
   }
 }
