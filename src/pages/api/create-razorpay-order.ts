@@ -7,12 +7,10 @@ const razorpay = new Razorpay({
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // ✅ Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', 'https://mangrove-stays-web.webflow.io');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // ✅ Handle preflight requests
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -28,13 +26,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Invalid or missing amount' });
     }
 
-    const options = { amount, currency, receipt };
-
-    const order = await razorpay.orders.create(options);
-
+    const order = await razorpay.orders.create({ amount, currency, receipt });
     return res.status(200).json({ order });
-  } catch (err: any) {
-    console.error('Error creating Razorpay order:', err);
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      console.error('Error creating Razorpay order:', err.message);
+    } else {
+      console.error('Unknown error:', err);
+    }
     return res.status(500).json({ error: 'Failed to create order' });
   }
 }
