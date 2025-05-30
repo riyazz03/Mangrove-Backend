@@ -94,8 +94,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hotelId
     });
 
-  } catch (error: any) {
-    console.error('Server error:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+  } catch (error) {
+    const err = error as Error;
+    console.error('Server error:', err);
+    return res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
+
 }
