@@ -1,37 +1,72 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import axios from 'axios';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  const payload = req.body;
+  const {
+    hotelId,
+    checkin,
+    checkout,
+    roomTypeId,
+    ratePlanId,
+    customerDetails,
+    amount,
+    adults,
+    children
+  } = req.body;
 
   try {
-    const response = await axios.post(
-      `https://api.stayflexi.com/core/api/v1/beservice/perform-booking`,
-      payload,
-      {
-        headers: {
-          'X-SF-API-KEY': process.env.STAYFLEXI_API_KEY || '',
-          'Content-Type': 'application/json',
+    const response = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-SF-API-KEY': process.env.STAYFLEXI_API_KEY!
+      },
+      body: JSON.stringify({
+        checkin,
+        checkout,
+        hotelId,
+        bookingStatus: 'CONFIRMED',
+        bookingSource: 'STAYFLEXI_OD',
+        roomStays: [
+          {
+            numAdults: adults,
+            numChildren: children,
+            numChildren1: 0,
+            roomTypeId,
+            ratePlanId
+          }
+        ],
+        customerDetails,
+        paymentDetails: {
+          sellRate: amount,
+          roomRate: amount,
+          payAtHotel: false
         },
-      }
-    );
+        promoInfo: {},
+        specialRequests: '',
+        requestToBook: false,
+        isAddOnPresent: true,
+        posOrderList: [],
+        isInsured: false,
+        refundableBookingFee: 0,
+        appliedPromocode: '',
+        promoAmount: 0,
+        bookingFees: 0,
+        isEnquiry: true,
+        isExternalPayment: false
+      })
+    });
 
-    res.status(200).json(response.data);
+    const data = await response.json();
+    if (!data.status || !data.bookingId) {
+      return res.status(400).json({ success: false, message: 'Booking failed', data });
+    }
+
+    return res.status(200).json({
+      success: true,
+      bookingId: data.bookingId,
+      hotelId
+    });
   } catch (error) {
-    console.error('Error creating booking:', error);
-    res.status(500).json({ error: 'Failed to create booking' });
+    return res.status(500).json({ success: false, message: 'Server error', error });
   }
 }
