@@ -1,6 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
   const {
     hotelId,
     checkin,
@@ -56,7 +61,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     });
 
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return res.status(500).json({ success: false, message: 'Invalid response from Stayflexi', raw: text });
+    }
+
     if (!data.status || !data.bookingId) {
       return res.status(400).json({ success: false, message: 'Booking failed', data });
     }
