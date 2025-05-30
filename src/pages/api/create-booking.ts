@@ -4,7 +4,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   const {
     hotelId,
@@ -17,6 +20,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     adults,
     children
   } = req.body;
+
+  if (!hotelId || !checkin || !checkout || !roomTypeId || !ratePlanId || !customerDetails || !amount) {
+    return res.status(400).json({ success: false, message: 'Missing required booking data.' });
+  }
 
   try {
     const response = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
@@ -63,14 +70,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const text = await response.text();
     let data;
+
     try {
       data = JSON.parse(text);
     } catch {
+      console.error('Stayflexi raw response:', text);
       return res.status(500).json({ success: false, message: 'Invalid response from Stayflexi', raw: text });
     }
 
+    console.log('Stayflexi response:', data);
+
     if (!data.status || !data.bookingId) {
-      return res.status(400).json({ success: false, message: 'Booking failed', data });
+      return res.status(400).json({
+        success: false,
+        message: data.message || 'Booking failed',
+        data
+      });
     }
 
     return res.status(200).json({
@@ -78,7 +93,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       bookingId: data.bookingId,
       hotelId
     });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Server error', error });
+
+  } catch (error: any) {
+    console.error('Server error:', error);
+    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 }
