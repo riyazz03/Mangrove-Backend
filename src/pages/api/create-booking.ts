@@ -5,7 +5,6 @@ interface RoomStay {
   ratePlanId: string;
   adults: number;
   children: number;
-  price?: number;
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -23,12 +22,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     checkout,
     customerDetails,
     amount,
-    // For single room booking (backward compatibility)
     roomTypeId,
     ratePlanId,
     adults,
     children,
-    // For multiple room booking
     rooms
   } = req.body;
 
@@ -39,11 +36,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     let roomStays = [];
 
-    // Check if this is a multiple room booking
     if (rooms && Array.isArray(rooms) && rooms.length > 0) {
-      console.log(`Processing multiple room booking for ${rooms.length} rooms`);
-      
-      // Validate each room has required fields
       for (const room of rooms) {
         if (!room.roomTypeId || !room.ratePlanId) {
           return res.status(400).json({ 
@@ -53,7 +46,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
 
-      // Create roomStays array for multiple rooms
       roomStays = rooms.map((room: RoomStay) => ({
         numAdults: room.adults || 1,
         numChildren: room.children || 0,
@@ -62,8 +54,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ratePlanId: room.ratePlanId
       }));
     } else if (roomTypeId && ratePlanId) {
-      // Single room booking (backward compatibility)
-      console.log('Processing single room booking');
       roomStays = [{
         numAdults: adults || 1,
         numChildren: children || 0,
@@ -74,11 +64,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else {
       return res.status(400).json({ 
         success: false, 
-        message: 'No room information provided. Either provide rooms array or roomTypeId/ratePlanId' 
+        message: 'No room information provided' 
       });
     }
-
-    console.log('Creating booking with roomStays:', JSON.stringify(roomStays, null, 2));
 
     const bookingPayload = {
       checkin,
@@ -86,7 +74,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hotelId,
       bookingStatus: 'CONFIRMED',
       bookingSource: 'STAYFLEXI_OD',
-      roomStays, // This now supports multiple rooms
+      roomStays,
+      ctaId: "",
       customerDetails,
       paymentDetails: {
         sellRate: amount,
@@ -107,8 +96,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       isExternalPayment: false
     };
 
-    console.log('Sending to Stayflexi:', JSON.stringify(bookingPayload, null, 2));
-
     const response = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
       method: 'POST',
       headers: {
@@ -124,15 +111,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       data = JSON.parse(text);
     } catch {
-      console.error('Stayflexi raw response:', text);
       return res.status(500).json({ 
         success: false, 
         message: 'Invalid response from Stayflexi', 
         raw: text 
       });
     }
-
-    console.log('Stayflexi response:', data);
 
     if (!data.status || !data.bookingId) {
       return res.status(400).json({
@@ -151,7 +135,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error) {
     const err = error as Error;
-    console.error('Server error:', err);
     return res.status(500).json({ 
       success: false, 
       message: 'Server error', 
