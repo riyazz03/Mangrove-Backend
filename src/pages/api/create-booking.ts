@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -27,9 +29,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    let roomStays = [];
+    let roomStays: any[] = [];
 
-    // Build roomStays array
     if (rooms && Array.isArray(rooms) && rooms.length > 0) {
       for (const room of rooms) {
         if (!room.roomTypeId || !room.ratePlanId) {
@@ -62,7 +63,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Force single-room-like payment structure even for multi-room
     const bookingPayload = {
       checkin,
       checkout,
@@ -74,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       customerDetails,
       paymentDetails: {
         sellRate: amount,
-        roomRate: 0, // CRITICAL: Set to 0 like working single room bookings
+        roomRate: 0,
         payAtHotel: false
       },
       promoInfo: {},
@@ -91,9 +91,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       isExternalPayment: false
     };
 
-    console.log('=== BOOKING PAYLOAD ===');
-    console.log(JSON.stringify(bookingPayload, null, 2));
-
     const response = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
       method: 'POST',
       headers: {
@@ -103,37 +100,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       body: JSON.stringify(bookingPayload)
     });
 
-    console.log('Response status:', response.status);
-    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
     const text = await response.text();
-    console.log('Raw response:', text);
 
     if (!response.ok) {
       return res.status(response.status).json({
         success: false,
-        message: `API Error ${response.status}: ${text}`,
-        statusCode: response.status
+        message: `API Error ${response.status}: ${text}`
       });
     }
 
     let data;
     try {
       data = JSON.parse(text);
-      console.log('Parsed response:', JSON.stringify(data, null, 2));
-    } catch (parseError) {
-      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-      console.error('Parse error:', errorMessage);
+    } catch {
       return res.status(500).json({ 
         success: false, 
         message: 'Invalid JSON response from Stayflexi API', 
-        rawResponse: text,
-        parseErrorMessage: errorMessage
+        rawResponse: text
       });
     }
 
     if (!data.status || !data.bookingId) {
-      console.error('Booking creation failed:', data);
       return res.status(400).json({
         success: false,
         message: data.message || 'Booking failed',
@@ -141,49 +128,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    console.log('=== BOOKING CREATED SUCCESSFULLY ===');
-    console.log('Booking ID:', data.bookingId);
-
-    // Wait 3 seconds before returning to ensure booking is fully processed
+    // Wait 3 seconds before returning
     await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Try to verify the booking exists
-    try {
-      const verifyResponse = await fetch(`https://api.stayflexi.com/core/api/v1/beservice/booking-details/${data.bookingId}`, {
-        headers: {
-          'X-SF-API-KEY': process.env.STAYFLEXI_API_KEY!
-        }
-      });
-      
-      const verifyData = await verifyResponse.json();
-      console.log('Booking verification:', verifyData);
-      
-      if (!verifyData.status) {
-        console.warn('Booking verification failed, but continuing...');
-      }
-    } catch (verifyError) {
-      const errorMsg = verifyError instanceof Error ? verifyError.message : String(verifyError);
-      console.warn('Could not verify booking, but continuing...', errorMsg);
-    }
 
     return res.status(200).json({
       success: true,
       bookingId: data.bookingId,
       hotelId,
-      roomCount: roomStays.length,
-      paymentReady: true
+      roomCount: roomStays.length
     });
 
-  } catch (mainError) {
-    const err = mainError as Error;
-    console.error('=== SERVER ERROR ===');
-    console.error('Error message:', err.message);
-    console.error('Error stack:', err.stack);
-    
+  } catch (error: any) {
     return res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: err.message
+      error: error.message || 'Unknown error'
     });
   }
 }
