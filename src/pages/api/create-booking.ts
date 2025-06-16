@@ -30,18 +30,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     let roomStays: any[] = [];
 
-    // Build roomStays according to official Stayflexi API format
+    // Build roomStays array
     if (rooms && Array.isArray(rooms) && rooms.length > 0) {
-      // Multi-room booking: add all rooms to single roomStays array
+      for (const room of rooms) {
+        if (!room.roomTypeId || !room.ratePlanId) {
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Each room must have roomTypeId and ratePlanId' 
+          });
+        }
+      }
+
       roomStays = rooms.map((room: any) => ({
         numAdults: room.adults || 1,
         numChildren: room.children || 0,
-        numChildren1: 0, // This is for infants - set to 0
+        numChildren1: 0,
         roomTypeId: room.roomTypeId,
         ratePlanId: room.ratePlanId
       }));
     } else if (roomTypeId && ratePlanId) {
-      // Single room booking
       roomStays = [{
         numAdults: adults || 1,
         numChildren: children || 0,
@@ -56,46 +63,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // CRITICAL: Payment structure exactly as per Stayflexi documentation
+    // Create "Pay at Hotel" booking first (from API doc page 13 - Pay at hotel payload)
     const bookingPayload = {
-      checkin, // Format: "DD-MM-YYYY HH:MM:ss"
-      checkout, // Format: "DD-MM-YYYY HH:MM:ss"
+      checkin,
+      checkout,
       hotelId,
-      bookingStatus: "CONFIRMED", // Exactly as per docs
-      bookingSource: "STAYFLEXI_OD", // Exactly as per docs
+      bookingStatus: 'CONFIRMED',
+      bookingSource: 'STAYFLEXI_OD',
       roomStays,
-      ctaId: "", // For direct billing customer (empty for regular bookings)
-      customerDetails: {
-        firstName: customerDetails.firstName,
-        lastName: customerDetails.lastName || "",
-        emailId: customerDetails.emailId,
-        phoneNumber: customerDetails.phoneNumber,
-        country: customerDetails.country || "",
-        city: customerDetails.city || "",
-        zipcode: customerDetails.zipcode || "",
-        address: customerDetails.address || "",
-        state: customerDetails.state || ""
-      },
+      ctaId: "",
+      customerDetails,
       paymentDetails: {
-        sellRate: amount, // Total amount being paid by customer
-        roomRate: amount, // Total amount being paid by customer  
-        payAtHotel: false // FALSE for online payment via gateway
+        sellRate: amount,
+        roomRate: amount, 
+        payAtHotel: true // CRITICAL: true for pay at hotel
       },
       promoInfo: {},
       specialRequests: "",
-      requestToBook: false, // Don't change this field as per docs
-      isAddOnPresent: true, // Don't change this field as per docs
-      posOrderList: [], // Don't change this field as per docs
-      isInsured: false, // Don't change this field as per docs
-      refundableBookingFee: 0, // Don't change this field as per docs
+      requestToBook: false,
+      isAddOnPresent: true,
+      posOrderList: [],
+      isInsured: false,
+      refundableBookingFee: 0,
       appliedPromocode: "",
       promoAmount: 0,
       bookingFees: 0,
-      isEnquiry: true, // TRUE for pay now bookings (creates 30min enquiry)
-      isExternalPayment: false // Don't change this field as per docs
+      isEnquiry: false, // CRITICAL: false for pay at hotel (automatically confirmed)
+      isExternalPayment: false
     };
 
-    console.log('Booking payload:', JSON.stringify(bookingPayload, null, 2));
+    console.log('=== CREATING PAY AT HOTEL BOOKING ===');
+    console.log(JSON.stringify(bookingPayload, null, 2));
 
     const response = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
       method: 'POST',
@@ -107,51 +105,94 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     const text = await response.text();
-    console.log('Raw API response:', text);
+    console.log('Booking API Response Status:', response.status);
+    console.log('Booking API Raw Response:', text);
 
     if (!response.ok) {
       return res.status(response.status).json({
         success: false,
-        message: `Stayflexi API Error ${response.status}: ${text}`
+        message: `Stayflexi Booking API Error ${response.status}: ${text}`
       });
     }
 
-    let data;
+    let bookingData;
     try {
-      data = JSON.parse(text);
+      bookingData = JSON.parse(text);
     } catch {
       return res.status(500).json({ 
         success: false, 
-        message: 'Invalid JSON response from Stayflexi API', 
+        message: 'Invalid JSON response from Stayflexi Booking API', 
         rawResponse: text
       });
     }
 
-    // Check response format as per documentation
-    if (!data.status || !data.bookingId) {
+    if (!bookingData.status || !bookingData.bookingId) {
       return res.status(400).json({
         success: false,
-        message: data.message || 'Booking creation failed',
-        stayflexiResponse: data
+        message: bookingData.message || 'Booking creation failed',
+        fullResponse: bookingData
       });
     }
 
-    console.log('Booking created successfully:', data.bookingId);
+    console.log('✅ Pay at Hotel Booking Created:', bookingData.bookingId);
+
+    // Now record external payment (from API doc page 14-15)
+    const paymentPayload = {
+      hotel_id: hotelId,
+      booking_id: bookingData.bookingId,
+      booking_source: "CUSTOM_BE",
+      module_source: "CUSTOM_BE_PAYMENT", 
+      amount: amount,
+      currency: "INR",
+      payment_gateway_id: `sf_gateway_${Date.now()}`, // Generate unique ID
+      pg_name: "STAYFLEXI_GATEWAY",
+      requires_post_payment_confirmation: "true",
+      notes: "Online payment via Stayflexi gateway",
+      gateway_message: "",
+      payment_type: "Online Payment",
+      payment_issuer: "STAYFLEXI",
+      payment_mode: "ONLINE",
+      status: "PENDING" // Will be updated after actual payment
+    };
+
+    console.log('=== RECORDING EXTERNAL PAYMENT ===');
+    console.log(JSON.stringify(paymentPayload, null, 2));
+
+    const paymentResponse = await fetch('https://api.stayflexi.com/api/v2/payments/recordExternalPayment/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+        // Note: This API doesn't require X-SF-API-KEY according to documentation
+      },
+      body: JSON.stringify(paymentPayload)
+    });
+
+    const paymentText = await paymentResponse.text();
+    console.log('Payment API Response Status:', paymentResponse.status);
+    console.log('Payment API Raw Response:', paymentText);
+
+    if (!paymentResponse.ok) {
+      console.warn('Payment recording failed, but booking exists:', paymentText);
+      // Continue anyway - booking exists, payment can be handled later
+    }
+
+    console.log('✅ Booking Process Complete');
 
     return res.status(200).json({
       success: true,
-      bookingId: data.bookingId,
+      bookingId: bookingData.bookingId,
       hotelId,
       roomCount: roomStays.length,
-      message: data.message || 'Success'
+      paymentRequired: true,
+      bookingType: 'pay_at_hotel_with_gateway'
     });
 
   } catch (error: any) {
-    console.error('Server error:', error);
+    console.error('Server Error:', error.message);
     return res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: error.message
+      error: error.message || 'Unknown error'
     });
   }
 }
