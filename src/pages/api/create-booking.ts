@@ -1,4 +1,3 @@
-// Enhanced version with comprehensive logging
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 interface RoomStay {
@@ -30,50 +29,129 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     rooms
   } = req.body;
 
-  // Enhanced logging
-  console.log('=== BOOKING REQUEST DEBUG ===');
-  console.log('Request Body:', JSON.stringify(req.body, null, 2));
-  console.log('Hotel ID:', hotelId);
-  console.log('Rooms array:', rooms);
-  console.log('Single room data:', { roomTypeId, ratePlanId, adults, children });
-
   if (!hotelId || !checkin || !checkout || !customerDetails || !amount) {
     return res.status(400).json({ success: false, message: 'Missing required booking data.' });
   }
 
   try {
-    let roomStays = [];
-
-    if (rooms && Array.isArray(rooms) && rooms.length > 0) {
-      console.log('Processing multiple rooms:', rooms.length);
+    // For multi-room bookings, create separate single-room bookings
+    if (rooms && Array.isArray(rooms) && rooms.length > 1) {
+      console.log('Creating separate bookings for multi-room request');
+      
+      const bookingResults = [];
       
       for (let i = 0; i < rooms.length; i++) {
         const room = rooms[i];
-        console.log(`Room ${i + 1}:`, room);
         
         if (!room.roomTypeId || !room.ratePlanId) {
-          console.error(`Room ${i + 1} missing required IDs:`, room);
           return res.status(400).json({ 
             success: false, 
-            message: `Room ${i + 1} is missing roomTypeId or ratePlanId`,
-            roomData: room
+            message: `Room ${i + 1} missing roomTypeId or ratePlanId` 
           });
+        }
+        
+        // Calculate individual room amount (assuming equal split)
+        const roomAmount = Math.round(amount / rooms.length);
+        
+        // Create individual booking for each room
+        const singleRoomPayload = {
+          checkin,
+          checkout,
+          hotelId,
+          bookingStatus: 'CONFIRMED',
+          bookingSource: 'STAYFLEXI_OD',
+          roomStays: [{
+            numAdults: room.adults || 1,
+            numChildren: room.children || 0,
+            numChildren1: 0,
+            roomTypeId: room.roomTypeId,
+            ratePlanId: room.ratePlanId
+          }],
+          ctaId: "",
+          customerDetails: {
+            ...customerDetails,
+            firstName: `${customerDetails.firstName} (Room ${i + 1})`
+          },
+          paymentDetails: {
+            sellRate: roomAmount,
+            roomRate: roomAmount,
+            payAtHotel: false
+          },
+          promoInfo: {},
+          specialRequests: '',
+          requestToBook: false,
+          isAddOnPresent: true,
+          posOrderList: [],
+          isInsured: false,
+          refundableBookingFee: 0,
+          appliedPromocode: '',
+          promoAmount: 0,
+          bookingFees: 0,
+          isEnquiry: true,
+          isExternalPayment: false
+        };
+
+        const response = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-SF-API-KEY': process.env.STAYFLEXI_API_KEY!
+          },
+          body: JSON.stringify(singleRoomPayload)
+        });
+
+        const text = await response.text();
+        
+        if (!response.ok) {
+          return res.status(response.status).json({
+            success: false,
+            message: `Failed to book room ${i + 1}: ${text}`
+          });
+        }
+
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (error) {
+          return res.status(500).json({
+            success: false,
+            message: `Invalid response for room ${i + 1}: ${text}`
+          });
+        }
+
+        if (!data.status || !data.bookingId) {
+          return res.status(400).json({
+            success: false,
+            message: `Booking failed for room ${i + 1}: ${data.message || 'Unknown error'}`
+          });
+        }
+
+        bookingResults.push({
+          bookingId: data.bookingId,
+          roomNumber: i + 1,
+          amount: roomAmount
+        });
+
+        // Small delay between bookings
+        if (i < rooms.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
 
-      roomStays = rooms.map((room: RoomStay, index: number) => {
-        const roomStay = {
-          numAdults: room.adults || 1,
-          numChildren: room.children || 0,
-          numChildren1: 0,
-          roomTypeId: room.roomTypeId,
-          ratePlanId: room.ratePlanId
-        };
-        console.log(`Mapped room ${index + 1}:`, roomStay);
-        return roomStay;
+      // Return the first booking ID for payment (you can modify this logic)
+      return res.status(200).json({
+        success: true,
+        bookingId: bookingResults[0].bookingId, // Use first booking for payment
+        hotelId,
+        roomCount: bookingResults.length,
+        allBookings: bookingResults // Include all booking IDs
       });
-    } else if (roomTypeId && ratePlanId) {
-      console.log('Processing single room');
+    }
+
+    // Single room booking logic
+    let roomStays = [];
+    
+    if (roomTypeId && ratePlanId) {
       roomStays = [{
         numAdults: adults || 1,
         numChildren: children || 0,
@@ -82,15 +160,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ratePlanId
       }];
     } else {
-      console.error('No valid room data found');
       return res.status(400).json({ 
         success: false, 
-        message: 'No room information provided',
-        debugInfo: { rooms, roomTypeId, ratePlanId }
+        message: 'No room information provided' 
       });
     }
-
-    console.log('Final roomStays:', JSON.stringify(roomStays, null, 2));
 
     const bookingPayload = {
       checkin,
@@ -120,9 +194,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       isExternalPayment: false
     };
 
-    console.log('=== SENDING TO STAYFLEXI API ===');
-    console.log('Payload:', JSON.stringify(bookingPayload, null, 2));
-
     const response = await fetch('https://api.stayflexi.com/core/api/v1/beservice/perform-booking', {
       method: 'POST',
       headers: {
@@ -132,109 +203,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       body: JSON.stringify(bookingPayload)
     });
 
-    console.log('Response status:', response.status);
-    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-    console.log('Response ok:', response.ok);
-
     const text = await response.text();
-    console.log('Raw response length:', text.length);
-    console.log('Raw response preview:', text.substring(0, 200));
     
-    // Check if response is empty
-    if (!text || text.trim() === '') {
-      console.error('Empty response from Stayflexi API');
-      return res.status(500).json({
+    if (!response.ok) {
+      return res.status(response.status).json({
         success: false,
-        message: 'Empty response from Stayflexi API',
-        statusCode: response.status,
-        statusText: response.statusText
-      });
-    }
-    
-    // Check if response looks like HTML (error page)
-    if (text.trim().startsWith('<')) {
-      console.error('Received HTML response instead of JSON');
-      return res.status(500).json({
-        success: false,
-        message: 'Received HTML response from Stayflexi API (possible error page)',
-        statusCode: response.status,
-        responsePreview: text.substring(0, 500)
+        message: `API Error ${response.status}: ${text}`
       });
     }
 
     let data;
     try {
       data = JSON.parse(text);
-      console.log('Parsed response:', JSON.stringify(data, null, 2));
-    } catch (parseError) {
-      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-      console.error('Failed to parse response:', parseError);
-      console.error('Raw response that failed to parse:', text);
-      console.error('Response length:', text.length);
-      console.error('First 500 chars:', text.substring(0, 500));
-      
+    } catch (error) {
       return res.status(500).json({ 
         success: false, 
-        message: 'Invalid JSON response from Stayflexi API', 
-        rawResponse: text.substring(0, 1000), // Limit to prevent huge responses
-        parseErrorMessage: errorMessage,
-        responseLength: text.length
+        message: 'Invalid response from Stayflexi', 
+        raw: text 
       });
     }
 
-    // Enhanced response validation
-    console.log('=== RESPONSE VALIDATION ===');
-    console.log('data.status:', data.status);
-    console.log('data.bookingId:', data.bookingId);
-    console.log('typeof data.bookingId:', typeof data.bookingId);
-    console.log('data.bookingId === undefined:', data.bookingId === undefined);
-    console.log('data.bookingId === null:', data.bookingId === null);
-
-    if (!data.status) {
-      console.error('Booking failed - no status');
+    if (!data.status || !data.bookingId) {
       return res.status(400).json({
         success: false,
-        message: data.message || 'Booking failed - no status returned',
-        fullResponse: data
+        message: data.message || 'Booking failed',
+        data
       });
     }
 
-    if (!data.bookingId || data.bookingId === 'undefined' || data.bookingId === undefined) {
-      console.error('Booking failed - invalid booking ID');
-      return res.status(400).json({
-        success: false,
-        message: 'Booking failed - no valid booking ID returned',
-        bookingId: data.bookingId,
-        fullResponse: data
-      });
-    }
-
-    console.log('=== SUCCESS ===');
-    const successResponse = {
+    return res.status(200).json({
       success: true,
       bookingId: data.bookingId,
       hotelId,
-      roomCount: roomStays.length,
-      debugInfo: {
-        roomStaysCount: roomStays.length,
-        isMultiRoom: roomStays.length > 1
-      }
-    };
-    
-    console.log('Sending success response:', successResponse);
-    return res.status(200).json(successResponse);
+      roomCount: roomStays.length
+    });
 
   } catch (error) {
     const err = error as Error;
-    console.error('=== ERROR ===');
-    console.error('Error message:', err.message);
-    console.error('Error stack:', err.stack);
-    
     return res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      error: err.message 
     });
   }
 }
