@@ -39,7 +39,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (rooms && Array.isArray(rooms) && rooms.length > 0) {
       for (let i = 0; i < rooms.length; i++) {
         const room = rooms[i];
-        
         if (!room.roomTypeId || !room.ratePlanId) {
           return res.status(400).json({ 
             success: false, 
@@ -67,11 +66,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else {
       return res.status(400).json({ 
         success: false, 
-        message: 'No room information provided',
-        debugInfo: { rooms, roomTypeId, ratePlanId }
+        message: 'No room information provided'
       });
     }
 
+    // Create enquiry booking with Stayflexi (30 min hold)
     const bookingPayload = {
       checkin,
       checkout,
@@ -84,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       paymentDetails: {
         sellRate: amount,
         roomRate: amount,
-        payAtHotel: false
+        payAtHotel: false // Pay now booking
       },
       promoInfo: {},
       specialRequests: '',
@@ -96,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       appliedPromocode: '',
       promoAmount: 0,
       bookingFees: 0,
-      isEnquiry: true,
+      isEnquiry: true, // This creates a 30-min enquiry booking
       isExternalPayment: false
     };
 
@@ -114,18 +113,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!text || text.trim() === '') {
       return res.status(500).json({
         success: false,
-        message: 'Empty response from Stayflexi API',
-        statusCode: response.status,
-        statusText: response.statusText
+        message: 'Empty response from Stayflexi API'
       });
     }
     
     if (text.trim().startsWith('<')) {
       return res.status(500).json({
         success: false,
-        message: 'Received HTML response from Stayflexi API (possible error page)',
-        statusCode: response.status,
-        responsePreview: text.substring(0, 500)
+        message: 'Received HTML response from Stayflexi API'
       });
     }
 
@@ -133,57 +128,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       data = JSON.parse(text);
     } catch (parseError) {
-      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-      
       return res.status(500).json({ 
         success: false, 
-        message: 'Invalid JSON response from Stayflexi API', 
-        rawResponse: text.substring(0, 1000),
-        parseErrorMessage: errorMessage,
-        responseLength: text.length
+        message: 'Invalid JSON response from Stayflexi API'
       });
     }
 
-    if (!data.status) {
+    if (!data.status || !data.bookingId) {
       return res.status(400).json({
         success: false,
-        message: data.message || 'Booking failed - no status returned',
-        fullResponse: data
-      });
-    }
-
-    if (!data.bookingId || data.bookingId === 'undefined' || data.bookingId === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: 'Booking failed - no valid booking ID returned',
-        bookingId: data.bookingId,
+        message: data.message || 'Booking creation failed',
         fullResponse: data
       });
     }
 
     console.log('Booking ID:', data.bookingId);
     
-    const successResponse = {
+    return res.status(200).json({
       success: true,
       bookingId: data.bookingId,
       hotelId,
       roomCount: roomStays.length,
-      debugInfo: {
-        roomStaysCount: roomStays.length,
-        isMultiRoom: roomStays.length > 1
-      }
-    };
-    
-    return res.status(200).json(successResponse);
+      amount: amount,
+      message: 'Enquiry booking created successfully'
+    });
 
   } catch (error) {
     const err = error as Error;
+    console.error('Booking creation error:', err.message);
     
     return res.status(500).json({ 
       success: false, 
       message: 'Server error', 
-      error: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      error: err.message
     });
   }
 }
