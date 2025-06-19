@@ -127,7 +127,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let data;
     try {
       data = JSON.parse(text);
-    } catch (parseError) {
+    } catch {
       return res.status(500).json({ 
         success: false, 
         message: 'Invalid JSON response from Stayflexi API'
