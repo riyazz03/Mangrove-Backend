@@ -42,8 +42,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    const orderReceipt = receipt || `receipt_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const orderReceipt = receipt || `rcpt_${Date.now().toString().slice(-8)}_${Math.floor(Math.random() * 999)}`;
     const amountInPaise = Math.round(amount * 100);
+
+    console.log('Receipt length:', orderReceipt.length, 'Receipt:', orderReceipt);
 
     // Create Basic Auth header
     const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_SECRET}`).toString('base64');
