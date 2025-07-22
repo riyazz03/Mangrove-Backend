@@ -1,4 +1,7 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { NextRequest, NextResponse } from 'next/server';
+
+// Required for Webflow Cloud Edge Runtime
+export const runtime = 'edge';
 
 interface RoomStay {
   roomTypeId: string;
@@ -7,44 +10,58 @@ interface RoomStay {
   children: number;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+export default async function handler(req: NextRequest) {
+  // Handle CORS for Edge runtime
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return new NextResponse(null, { status: 200, headers: corsHeaders });
   }
 
-  const {
-    hotelId,
-    checkin,
-    checkout,
-    customerDetails,
-    amount,
-    roomTypeId,
-    ratePlanId,
-    adults,
-    children,
-    rooms
-  } = req.body;
-
-  if (!hotelId || !checkin || !checkout || !customerDetails || !amount) {
-    return res.status(400).json({ success: false, message: 'Missing required booking data.' });
+  if (req.method !== 'POST') {
+    return NextResponse.json(
+      { error: 'Method not allowed' }, 
+      { status: 405, headers: corsHeaders }
+    );
   }
 
   try {
+    const body = await req.json();
+    const {
+      hotelId,
+      checkin,
+      checkout,
+      customerDetails,
+      amount,
+      roomTypeId,
+      ratePlanId,
+      adults,
+      children,
+      rooms
+    } = body;
+
+    if (!hotelId || !checkin || !checkout || !customerDetails || !amount) {
+      return NextResponse.json(
+        { success: false, message: 'Missing required booking data.' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     let roomStays = [];
 
     if (rooms && Array.isArray(rooms) && rooms.length > 0) {
       for (let i = 0; i < rooms.length; i++) {
         const room = rooms[i];
         if (!room.roomTypeId || !room.ratePlanId) {
-          return res.status(400).json({ 
+          return NextResponse.json({ 
             success: false, 
             message: `Room ${i + 1} is missing roomTypeId or ratePlanId`,
             roomData: room
-          });
+          }, { status: 400, headers: corsHeaders });
         }
       }
 
@@ -64,10 +81,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         ratePlanId
       }];
     } else {
-      return res.status(400).json({ 
+      return NextResponse.json({ 
         success: false, 
         message: 'No room information provided'
-      });
+      }, { status: 400, headers: corsHeaders });
     }
 
     // Create enquiry booking with Stayflexi (30 min hold)
@@ -111,56 +128,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const text = await response.text();
     
     if (!text || text.trim() === '') {
-      return res.status(500).json({
+      return NextResponse.json({
         success: false,
         message: 'Empty response from Stayflexi API'
-      });
+      }, { status: 500, headers: corsHeaders });
     }
     
     if (text.trim().startsWith('<')) {
-      return res.status(500).json({
+      return NextResponse.json({
         success: false,
         message: 'Received HTML response from Stayflexi API'
-      });
+      }, { status: 500, headers: corsHeaders });
     }
 
     let data;
     try {
       data = JSON.parse(text);
     } catch {
-      return res.status(500).json({ 
+      return NextResponse.json({ 
         success: false, 
         message: 'Invalid JSON response from Stayflexi API'
-      });
+      }, { status: 500, headers: corsHeaders });
     }
 
     if (!data.status || !data.bookingId) {
-      return res.status(400).json({
+      return NextResponse.json({
         success: false,
         message: data.message || 'Booking creation failed',
         fullResponse: data
-      });
+      }, { status: 400, headers: corsHeaders });
     }
 
     console.log('Booking ID:', data.bookingId);
     
-    return res.status(200).json({
+    return NextResponse.json({
       success: true,
       bookingId: data.bookingId,
       hotelId,
       roomCount: roomStays.length,
       amount: amount,
       message: 'Enquiry booking created successfully'
-    });
+    }, { status: 200, headers: corsHeaders });
 
   } catch (error) {
     const err = error as Error;
     console.error('Booking creation error:', err.message);
     
-    return res.status(500).json({ 
+    return NextResponse.json({ 
       success: false, 
       message: 'Server error', 
       error: err.message
-    });
+    }, { status: 500, headers: corsHeaders });
   }
 }

@@ -1,27 +1,37 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import axios from 'axios';
+import { NextRequest, NextResponse } from 'next/server';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+// Required for Webflow Cloud Edge Runtime
+export const runtime = 'edge';
+
+export default async function handler(req: NextRequest) {
+  // Handle CORS for Edge runtime
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return new NextResponse(null, { status: 200, headers: corsHeaders });
   }
 
-  const { hotelId } = req.query;
+  // Get query parameters from URL
+  const { searchParams } = new URL(req.url);
+  const hotelId = searchParams.get('hotelId');
 
-  if (!hotelId || typeof hotelId !== 'string') {
-    return res.status(400).json({ error: 'Hotel ID is required' });
+  if (!hotelId) {
+    return NextResponse.json(
+      { error: 'Hotel ID is required' },
+      { status: 400, headers: corsHeaders }
+    );
   }
 
+  // Get today's date in YYYY-MM-DD format
   const today = new Date();
   const todayFormatted = today.toISOString().split('T')[0]; // YYYY-MM-DD
 
   try {
-    const response = await axios.get(
+    const response = await fetch(
       `https://api.stayflexi.com/core/api/v1/beservice/hotelcheckin/?hotelId=${hotelId}&date=${todayFormatted}`,
       {
         headers: {
@@ -30,9 +40,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     );
 
-    res.status(200).json(response.data);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    return NextResponse.json(data, { 
+      status: 200, 
+      headers: corsHeaders 
+    });
   } catch (error) {
     console.error('Error fetching check-in times:', error);
-    res.status(500).json({ error: 'Failed to fetch check-in times' });
+    return NextResponse.json(
+      { error: 'Failed to fetch check-in times' }, 
+      { 
+        status: 500, 
+        headers: corsHeaders 
+      }
+    );
   }
 }

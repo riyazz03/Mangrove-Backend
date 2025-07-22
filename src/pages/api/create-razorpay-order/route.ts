@@ -1,16 +1,25 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { NextRequest, NextResponse } from 'next/server';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// Required for Webflow Cloud Edge Runtime
+export const runtime = 'edge';
+
+export default async function handler(req: NextRequest) {
+  // Handle CORS for Edge runtime
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return new NextResponse(null, { status: 200, headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return NextResponse.json(
+      { error: 'Method not allowed' }, 
+      { status: 405, headers: corsHeaders }
+    );
   }
 
   try {
@@ -19,27 +28,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Check environment variables
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_SECRET) {
       console.error('Missing Razorpay credentials');
-      return res.status(500).json({ 
+      return NextResponse.json({ 
         success: false,
         error: 'Missing Razorpay credentials' 
-      });
+      }, { status: 500, headers: corsHeaders });
     }
 
-    const { amount, currency = 'INR', receipt } = req.body;
+    const body = await req.json();
+    const { amount, currency = 'INR', receipt } = body;
     console.log('Request data:', { amount, currency, receipt });
 
     if (!amount || typeof amount !== 'number') {
-      return res.status(400).json({ 
+      return NextResponse.json({ 
         success: false,
         error: 'Invalid or missing amount' 
-      });
+      }, { status: 400, headers: corsHeaders });
     }
 
     if (amount <= 0) {
-      return res.status(400).json({ 
+      return NextResponse.json({ 
         success: false,
         error: 'Amount must be greater than 0' 
-      });
+      }, { status: 400, headers: corsHeaders });
     }
 
     const orderReceipt = receipt || `rcpt_${Date.now().toString().slice(-8)}_${Math.floor(Math.random() * 999)}`;
@@ -48,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('Receipt length:', orderReceipt.length, 'Receipt:', orderReceipt);
 
     // Create Basic Auth header
-    const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_SECRET}`).toString('base64');
+    const auth = btoa(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_SECRET}`);
 
     const orderData = {
       amount: amountInPaise,
@@ -73,16 +83,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Razorpay API error:', errorText);
-      return res.status(response.status).json({ 
+      return NextResponse.json({ 
         success: false,
         error: `Razorpay API error: ${errorText}` 
-      });
+      }, { status: response.status, headers: corsHeaders });
     }
 
     const order = await response.json();
     console.log('Order created successfully:', order.id);
     
-    return res.status(200).json({ 
+    return NextResponse.json({ 
       success: true,
       order: {
         id: order.id,
@@ -91,22 +101,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         receipt: order.receipt,
         status: order.status
       }
-    });
+    }, { status: 200, headers: corsHeaders });
 
   } catch (error) {
     console.error('Error creating Razorpay order:', error);
     
     if (error instanceof Error) {
-      return res.status(500).json({ 
+      return NextResponse.json({ 
         success: false,
         error: `Server error: ${error.message}` 
-      });
+      }, { status: 500, headers: corsHeaders });
     }
     
-    return res.status(500).json({ 
+    return NextResponse.json({ 
       success: false,
       error: 'Unknown server error',
       details: String(error)
-    });
+    }, { status: 500, headers: corsHeaders });
   }
 }

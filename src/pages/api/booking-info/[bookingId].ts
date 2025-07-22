@@ -1,24 +1,33 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import axios from 'axios';
+import { NextRequest, NextResponse } from 'next/server';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+// Required for Webflow Cloud Edge Runtime
+export const runtime = 'edge';
+
+export default async function handler(req: NextRequest) {
+  // Handle CORS for Edge runtime
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+    return new NextResponse(null, { status: 200, headers: corsHeaders });
   }
 
-  const { bookingId } = req.query;
+  // Get query parameters from URL
+  const { searchParams } = new URL(req.url);
+  const bookingId = searchParams.get('bookingId');
 
-  if (!bookingId || typeof bookingId !== 'string') {
-    return res.status(400).json({ error: 'Booking ID is required' });
+  if (!bookingId) {
+    return NextResponse.json(
+      { error: 'Booking ID is required' },
+      { status: 400, headers: corsHeaders }
+    );
   }
 
   try {
-    const response = await axios.get(
+    const response = await fetch(
       `https://api.stayflexi.com/core/api/v1/beservice/bookinginfo?bookingId=${bookingId}`,
       {
         headers: {
@@ -27,9 +36,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     );
 
-    res.status(200).json(response.data);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    return NextResponse.json(data, { 
+      status: 200, 
+      headers: corsHeaders 
+    });
   } catch (error) {
     console.error('Error fetching booking info:', error);
-    res.status(500).json({ error: 'Failed to fetch booking info' });
+    return NextResponse.json(
+      { error: 'Failed to fetch booking info' }, 
+      { 
+        status: 500, 
+        headers: corsHeaders 
+      }
+    );
   }
 }

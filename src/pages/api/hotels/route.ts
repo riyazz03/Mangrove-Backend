@@ -15,27 +15,12 @@ export default async function handler(req: NextRequest) {
     return new NextResponse(null, { status: 200, headers: corsHeaders });
   }
 
-  // Get query parameters from URL
-  const { searchParams } = new URL(req.url);
-  const hotelId = searchParams.get('hotelId');
-
-  if (!hotelId) {
-    return NextResponse.json(
-      { error: 'Hotel ID is required' },
-      { status: 400, headers: corsHeaders }
-    );
-  }
-
-  // Get today's date in YYYY-MM-DD format
-  const today = new Date();
-  const todayFormatted = today.toISOString().split('T')[0]; // YYYY-MM-DD
-
   try {
     const response = await fetch(
-      `https://api.stayflexi.com/core/api/v1/beservice/hotelcheckout/?hotelId=${hotelId}&date=${todayFormatted}`,
+      `https://api.stayflexi.com/core/api/v1/beservice/grouphotels?groupId=24316`,
       {
         headers: {
-          'X-SF-API-KEY': process.env.STAYFLEXI_API_KEY || '',
+          "X-SF-API-KEY": process.env.STAYFLEXI_API_KEY || '',
         },
       }
     );
@@ -51,9 +36,9 @@ export default async function handler(req: NextRequest) {
       headers: corsHeaders 
     });
   } catch (error) {
-    console.error('Error fetching checkout times:', error);
+    console.error('Error fetching hotels:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch checkout times' }, 
+      { error: 'Failed to fetch hotels' }, 
       { 
         status: 500, 
         headers: corsHeaders 
