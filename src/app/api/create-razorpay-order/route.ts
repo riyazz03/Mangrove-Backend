@@ -1,26 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Required for Webflow Cloud Edge Runtime
 export const runtime = 'edge';
 
-export default async function handler(req: NextRequest) {
-  // Handle CORS for Edge runtime
+export async function POST(request: NextRequest) {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
-
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, { status: 200, headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return NextResponse.json(
-      { error: 'Method not allowed' }, 
-      { status: 405, headers: corsHeaders }
-    );
-  }
 
   try {
     console.log('Creating Razorpay order via HTTP API...');
@@ -34,7 +21,7 @@ export default async function handler(req: NextRequest) {
       }, { status: 500, headers: corsHeaders });
     }
 
-    const body = await req.json();
+    const body = await request.json();
     const { amount, currency = 'INR', receipt } = body;
     console.log('Request data:', { amount, currency, receipt });
 
@@ -101,7 +88,7 @@ export default async function handler(req: NextRequest) {
         receipt: order.receipt,
         status: order.status
       }
-    }, { status: 200, headers: corsHeaders });
+    }, { headers: corsHeaders });
 
   } catch (error) {
     console.error('Error creating Razorpay order:', error);
@@ -119,4 +106,15 @@ export default async function handler(req: NextRequest) {
       details: String(error)
     }, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }

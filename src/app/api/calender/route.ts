@@ -1,34 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Required for Webflow Cloud Edge Runtime
 export const runtime = 'edge';
 
-export default async function handler(req: NextRequest) {
-  // Handle CORS for Edge runtime
+export async function GET(request: NextRequest) {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, { status: 200, headers: corsHeaders });
-  }
-
-  // Get query parameters from URL
-  const { searchParams } = new URL(req.url);
-  const hotelId = searchParams.get('hotelId');
-  const fromDate = searchParams.get('fromDate');
-  const toDate = searchParams.get('toDate');
-
-  if (!hotelId || !fromDate || !toDate) {
-    return NextResponse.json(
-      { error: 'hotelId, fromDate, and toDate are required' },
-      { status: 400, headers: corsHeaders }
-    );
-  }
-
   try {
+    const { searchParams } = new URL(request.url);
+    const hotelId = searchParams.get('hotelId');
+    const fromDate = searchParams.get('fromDate');
+    const toDate = searchParams.get('toDate');
+
+    if (!hotelId || !fromDate || !toDate) {
+      return NextResponse.json(
+        { error: 'hotelId, fromDate, and toDate are required' },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     const response = await fetch(
       `https://api.stayflexi.com/core/api/v1/beservice/hotelcalendar/?hotelId=${hotelId}&fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}`,
       {
@@ -45,7 +38,6 @@ export default async function handler(req: NextRequest) {
     const data = await response.json();
     
     return NextResponse.json(data, { 
-      status: 200, 
       headers: corsHeaders 
     });
   } catch (error) {
@@ -58,4 +50,15 @@ export default async function handler(req: NextRequest) {
       }
     );
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }

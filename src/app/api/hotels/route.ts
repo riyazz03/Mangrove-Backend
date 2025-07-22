@@ -1,19 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-// Required for Webflow Cloud Edge Runtime
 export const runtime = 'edge';
 
-export default async function handler(req: NextRequest) {
-  // Handle CORS for Edge runtime
+export async function GET() {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
-
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, { status: 200, headers: corsHeaders });
-  }
 
   try {
     const response = await fetch(
@@ -32,7 +26,6 @@ export default async function handler(req: NextRequest) {
     const data = await response.json();
     
     return NextResponse.json(data, { 
-      status: 200, 
       headers: corsHeaders 
     });
   } catch (error) {
@@ -45,4 +38,15 @@ export default async function handler(req: NextRequest) {
       }
     );
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }

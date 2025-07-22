@@ -1,23 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Required for Webflow Cloud Edge Runtime
 export const runtime = 'edge';
 
-export default async function handler(req: NextRequest) {
-  // Handle CORS for Edge runtime
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ hotelId: string }> }
+) {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
 
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, { status: 200, headers: corsHeaders });
-  }
-
-  // Get query parameters from URL
-  const { searchParams } = new URL(req.url);
-  const hotelId = searchParams.get('hotelId');
+  const { hotelId } = await params;
 
   if (!hotelId) {
     return NextResponse.json(
@@ -28,7 +23,7 @@ export default async function handler(req: NextRequest) {
 
   // Get today's date in YYYY-MM-DD format
   const today = new Date();
-  const todayFormatted = today.toISOString().split('T')[0]; // YYYY-MM-DD
+  const todayFormatted = today.toISOString().split('T')[0];
 
   try {
     const response = await fetch(
@@ -47,7 +42,6 @@ export default async function handler(req: NextRequest) {
     const data = await response.json();
     
     return NextResponse.json(data, { 
-      status: 200, 
       headers: corsHeaders 
     });
   } catch (error) {
@@ -60,4 +54,15 @@ export default async function handler(req: NextRequest) {
       }
     );
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
 }

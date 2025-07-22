@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Required for Webflow Cloud Edge Runtime
 export const runtime = 'edge';
 
 interface RoomStay {
@@ -10,27 +9,15 @@ interface RoomStay {
   children: number;
 }
 
-export default async function handler(req: NextRequest) {
-  // Handle CORS for Edge runtime
+export async function POST(request: NextRequest) {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, { status: 200, headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return NextResponse.json(
-      { error: 'Method not allowed' }, 
-      { status: 405, headers: corsHeaders }
-    );
-  }
-
   try {
-    const body = await req.json();
+    const body = await request.json();
     const {
       hotelId,
       checkin,
@@ -100,7 +87,7 @@ export default async function handler(req: NextRequest) {
       paymentDetails: {
         sellRate: amount,
         roomRate: amount,
-        payAtHotel: false // Pay now booking
+        payAtHotel: false
       },
       promoInfo: {},
       specialRequests: '',
@@ -112,7 +99,7 @@ export default async function handler(req: NextRequest) {
       appliedPromocode: '',
       promoAmount: 0,
       bookingFees: 0,
-      isEnquiry: true, // This creates a 30-min enquiry booking
+      isEnquiry: true,
       isExternalPayment: false
     };
 
@@ -168,7 +155,7 @@ export default async function handler(req: NextRequest) {
       roomCount: roomStays.length,
       amount: amount,
       message: 'Enquiry booking created successfully'
-    }, { status: 200, headers: corsHeaders });
+    }, { headers: corsHeaders });
 
   } catch (error) {
     const err = error as Error;
@@ -180,4 +167,15 @@ export default async function handler(req: NextRequest) {
       error: err.message
     }, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }

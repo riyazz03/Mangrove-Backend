@@ -1,29 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Required for Webflow Cloud Edge Runtime
 export const runtime = 'edge';
 
-export default async function handler(req: NextRequest) {
-  // Handle CORS for Edge runtime
+export async function POST(request: NextRequest) {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   };
 
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, { status: 200, headers: corsHeaders });
-  }
-
-  if (req.method !== 'POST') {
-    return NextResponse.json(
-      { success: false, message: 'Method not allowed' },
-      { status: 405, headers: corsHeaders }
-    );
-  }
-
   try {
-    const body = await req.json();
+    const body = await request.json();
     const {
       razorpay_payment_id,
       razorpay_order_id,
@@ -114,7 +101,7 @@ export default async function handler(req: NextRequest) {
       bookingId: bookingId,
       paymentId: razorpay_payment_id,
       paymentResult: paymentResult
-    }, { status: 200, headers: corsHeaders });
+    }, { headers: corsHeaders });
 
   } catch (error) {
     const err = error as Error;
@@ -126,4 +113,15 @@ export default async function handler(req: NextRequest) {
       error: err.message
     }, { status: 500, headers: corsHeaders });
   }
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 }
