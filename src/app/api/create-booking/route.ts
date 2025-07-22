@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const runtime = 'edge';
-
 interface RoomStay {
   roomTypeId: string;
   ratePlanId: string;
