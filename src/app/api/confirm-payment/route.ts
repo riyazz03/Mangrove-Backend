@@ -82,16 +82,39 @@ export async function POST(request: NextRequest) {
     const paymentResponse = await fetch('https://api.stayflexi.com/api/v2/payments/recordExternalPayment/', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-SF-API-KEY': process.env.STAYFLEXI_API_KEY || ''
       },
       body: JSON.stringify(paymentData)
     });
 
+    const paymentText = await paymentResponse.text();
+
     if (!paymentResponse.ok) {
-      throw new Error(`Payment recording failed: ${paymentResponse.status}`);
+      console.error('Stayflexi recordExternalPayment rejected:', paymentResponse.status, paymentText, 'booking:', bookingId, 'payment:', razorpay_payment_id);
+      throw new Error(`Payment recording failed: ${paymentResponse.status} ${paymentText.slice(0, 200)}`);
     }
 
-    const paymentResult = await paymentResponse.json();
+    let paymentResult: Record<string, unknown> | null = null;
+    try {
+      paymentResult = paymentText ? JSON.parse(paymentText) : null;
+    } catch {
+      paymentResult = null;
+    }
+
+    // Stayflexi can answer HTTP 200 with an error in the body
+    // (e.g. {"code":"401","message":"Please specify the correct api key"}).
+    const errorCode = Number(paymentResult?.code);
+    const rejected =
+      !!paymentResult &&
+      (paymentResult.error !== undefined ||
+        paymentResult.status === false ||
+        (Number.isFinite(errorCode) && errorCode >= 400));
+
+    if (rejected) {
+      console.error('Stayflexi recordExternalPayment returned an error body:', paymentText, 'booking:', bookingId, 'payment:', razorpay_payment_id);
+      throw new Error(`Payment recording failed: ${paymentText.slice(0, 200)}`);
+    }
 
     return NextResponse.json({
       success: true,
